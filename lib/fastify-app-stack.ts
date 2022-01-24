@@ -6,6 +6,8 @@ import * as elbv2 from "@aws-cdk/aws-elasticloadbalancingv2";
 
 dotenv.config();
 
+let targetPriority = 0;
+
 class FastifyAppStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -33,6 +35,10 @@ class FastifyAppStack extends cdk.Stack {
     const serviceName1 = "fastify-test-drive";
     const service1 = this.createFargateService(cluster, serviceName1);
     this.addTarget(service1, listener, serviceName1);
+
+    const serviceName2 = "fastify-test-drive2";
+    const service2 = this.createFargateService(cluster, serviceName2);
+    this.addTarget(service2, listener, serviceName2);
   }
 
   createFargateService(
@@ -88,9 +94,11 @@ class FastifyAppStack extends cdk.Stack {
     listener: elbv2.IApplicationListener,
     targetName: string
   ) {
+    targetPriority += 1;
+
     listener.addTargets(`ecs-${targetName}`, {
       port: 80,
-      priority: 1,
+      priority: targetPriority,
       conditions: [elbv2.ListenerCondition.httpHeader("target", [targetName])],
       targets: [
         service.loadBalancerTarget({
