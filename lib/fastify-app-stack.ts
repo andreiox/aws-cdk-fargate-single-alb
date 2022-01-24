@@ -30,35 +30,18 @@ class FastifyAppStack extends cdk.Stack {
       }),
     });
 
-    const service = this.createFargateService(cluster);
-
-    listener.addTargets(`ecs-fastify-test-drive`, {
-      port: 80,
-      priority: 1,
-      conditions: [
-        elbv2.ListenerCondition.httpHeader("target", ["fastify-test-drive"]),
-      ],
-      targets: [
-        service.loadBalancerTarget({
-          containerName: "web",
-          containerPort: 3000,
-        }),
-      ],
-      healthCheck: {
-        interval: cdk.Duration.seconds(5),
-        healthyHttpCodes: "200",
-        healthyThresholdCount: 2,
-        unhealthyThresholdCount: 3,
-        timeout: cdk.Duration.seconds(4),
-      },
-      deregistrationDelay: cdk.Duration.seconds(30),
-    });
+    const serviceName1 = "fastify-test-drive";
+    const service1 = this.createFargateService(cluster, serviceName1);
+    this.addTarget(service1, listener, serviceName1);
   }
 
-  createFargateService(cluster: ecs.ICluster): ecs.FargateService {
+  createFargateService(
+    cluster: ecs.ICluster,
+    serviceName: string
+  ): ecs.FargateService {
     const taskDefinition = new ecs.FargateTaskDefinition(
       this,
-      "taskDefinition",
+      `taskdefinition-${serviceName}`,
       {
         cpu: 256,
         memoryLimitMiB: 512,
@@ -76,11 +59,15 @@ class FastifyAppStack extends cdk.Stack {
       protocol: ecs.Protocol.TCP,
     });
 
-    const fargateService = new ecs.FargateService(this, "fargate-fastify-test-drive", {
-      cluster: cluster,
-      taskDefinition,
-      desiredCount: 1,
-    });
+    const fargateService = new ecs.FargateService(
+      this,
+      `fargate-${serviceName}`,
+      {
+        cluster: cluster,
+        taskDefinition,
+        desiredCount: 1,
+      }
+    );
 
     this.createAutoScaleForService(fargateService);
 
@@ -93,6 +80,32 @@ class FastifyAppStack extends cdk.Stack {
       targetUtilizationPercent: 70,
       scaleInCooldown: cdk.Duration.seconds(60),
       scaleOutCooldown: cdk.Duration.seconds(60),
+    });
+  }
+
+  addTarget(
+    service: ecs.FargateService,
+    listener: elbv2.IApplicationListener,
+    targetName: string
+  ) {
+    listener.addTargets(`ecs-${targetName}`, {
+      port: 80,
+      priority: 1,
+      conditions: [elbv2.ListenerCondition.httpHeader("target", [targetName])],
+      targets: [
+        service.loadBalancerTarget({
+          containerName: "web",
+          containerPort: 3000,
+        }),
+      ],
+      healthCheck: {
+        interval: cdk.Duration.seconds(5),
+        healthyHttpCodes: "200",
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 3,
+        timeout: cdk.Duration.seconds(4),
+      },
+      deregistrationDelay: cdk.Duration.seconds(30),
     });
   }
 }
