@@ -31,6 +31,28 @@ class FastifyAppStack extends cdk.Stack {
     });
 
     const service = this.createFargateService(cluster);
+
+    listener.addTargets(`ecs-fastify-test-drive`, {
+      port: 80,
+      priority: 1,
+      conditions: [
+        elbv2.ListenerCondition.httpHeader("target", ["fastify-test-drive"]),
+      ],
+      targets: [
+        service.loadBalancerTarget({
+          containerName: "web",
+          containerPort: 3000,
+        }),
+      ],
+      healthCheck: {
+        interval: cdk.Duration.seconds(5),
+        healthyHttpCodes: "200",
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 3,
+        timeout: cdk.Duration.seconds(4),
+      },
+      deregistrationDelay: cdk.Duration.seconds(30),
+    });
   }
 
   createFargateService(cluster: ecs.ICluster): ecs.FargateService {
