@@ -1,8 +1,8 @@
 import * as dotenv from "dotenv";
+import * as cdk from "@aws-cdk/core";
 import * as ec2 from "@aws-cdk/aws-ec2";
 import * as ecs from "@aws-cdk/aws-ecs";
-import * as ecs_patterns from "@aws-cdk/aws-ecs-patterns";
-import * as cdk from "@aws-cdk/core";
+import * as elbv2 from "@aws-cdk/aws-elasticloadbalancingv2";
 
 dotenv.config();
 
@@ -13,28 +13,54 @@ class FastifyAppStack extends cdk.Stack {
     const vpc = new ec2.Vpc(this, "vpc", { maxAzs: 2 });
     const cluster = new ecs.Cluster(this, "cluster", { vpc });
 
-    this.createFargateService(cluster);
+    const loadbalancer = new elbv2.ApplicationLoadBalancer(this, "alb", {
+      vpc: vpc,
+      internetFacing: true,
+    });
+
+    const listener = loadbalancer.addListener("listener", {
+      port: 80,
+      open: true,
+    });
+
+    listener.addAction("default", {
+      action: elbv2.ListenerAction.fixedResponse(200, {
+        contentType: elbv2.ContentType.TEXT_PLAIN,
+        messageBody: "OK",
+      }),
+    });
+
+    const service = this.createFargateService(cluster);
   }
 
-  createFargateService(
-    cluster: ecs.ICluster
-  ): ecs_patterns.ApplicationLoadBalancedFargateService {
-    const fargateService =
-      new ecs_patterns.ApplicationLoadBalancedFargateService(
-        this,
-        "fargateService",
-        {
-          cluster,
-          taskImageOptions: {
-            containerPort: 3000,
-            image: ecs.ContainerImage.fromRegistry(
-              "andreiox/fastify-test-drive"
-            ),
-          },
-        }
-      );
+  createFargateService(cluster: ecs.ICluster): ecs.FargateService {
+    const taskDefinition = new ecs.FargateTaskDefinition(
+      this,
+      "taskDefinition",
+      {
+        cpu: 256,
+        memoryLimitMiB: 512,
+      }
+    );
 
-    this.createAutoScaleForService(fargateService.service);
+    const container = taskDefinition.addContainer("web", {
+      image: ecs.ContainerImage.fromRegistry("andreiox/fastify-test-drive"),
+      environment: { PORT: "3000" },
+    });
+
+    container.addPortMappings({
+      containerPort: 3000,
+      hostPort: 3000,
+      protocol: ecs.Protocol.TCP,
+    });
+
+    const fargateService = new ecs.FargateService(this, "fargate-fastify-test-drive", {
+      cluster: cluster,
+      taskDefinition,
+      desiredCount: 1,
+    });
+
+    this.createAutoScaleForService(fargateService);
 
     return fargateService;
   }
